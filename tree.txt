@@ -1,0 +1,31 @@
+Folder PATH listing for volume Windows
+Volume serial number is 0035-3E73
+C:.
+|   .gitignore
+|   ARCHITECURE.md
+|   directory.md
+|   pyproject.toml
+|   README.md
+|   SCOPE.md
+|   tree.txt
+|           
+\---src
+    \---task_manager
+        |   __init__.py
+        |   
+        \---api
+            |   app.py
+            |   __init__.py
+            |   
+            +---handlers
+            |       tasks.py
+            |       __init__.py
+            |       
+            \---v1
+                |   blueprints.py
+                |   __init__.py
+                |   
+                \---routes
+                        tasks.py
+                        __init__.py
+                        
