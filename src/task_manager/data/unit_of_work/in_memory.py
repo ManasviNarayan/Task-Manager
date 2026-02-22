@@ -2,6 +2,11 @@
 
 from task_manager.data.repositories.in_memory import InMemoryTaskRepository
 from task_manager.data.unit_of_work.interfaces import ITaskUnitOfWork
+from task_manager.logger import get_logger
+from task_manager.exceptions import DatabaseError
+import logging
+
+logger = get_logger(__name__, level=logging.INFO)
 
 class InMemoryTaskUnitOfWork(ITaskUnitOfWork):
     def __init__(self, db):
@@ -9,13 +14,20 @@ class InMemoryTaskUnitOfWork(ITaskUnitOfWork):
         self._tasks = InMemoryTaskRepository(db)
 
     @property
-    def tasks(self) :
+    def tasks(self)-> InMemoryTaskRepository:
         return self._tasks
 
     def commit(self):
-        # In-memory has no real transaction, so pass
-        pass
+        try:
+            # In-memory has no real transaction, but logger the intent
+            logger.debug("Committing transaction (in-memory no-op)")
+        except Exception as e:
+            logger.exception("Commit failed in InMemoryTaskUnitOfWork")
+            raise DatabaseError("Commit failed in in-memory UoW") from e
 
     def rollback(self):
-        # Optional: clear DB or do nothing
-        pass
+        try:
+            logger.debug("Rolling back transaction (in-memory no-op)")
+        except Exception as e:
+            logger.exception("Rollback failed in InMemoryTaskUnitOfWork")
+            raise DatabaseError("Rollback failed in in-memory UoW") from e

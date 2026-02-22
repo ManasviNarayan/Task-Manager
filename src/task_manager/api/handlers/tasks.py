@@ -2,13 +2,20 @@
 from task_manager.api.providers import get_task_list_uow
 from task_manager.services.tasks import TaskService
 from task_manager.api.schemas import TaskPayload
+from task_manager.logger import get_logger
 from http import HTTPStatus
 from dataclasses import asdict
+import logging
 
-def get_tasks():
+logger = get_logger(__name__, logging.INFO)
+
+def get_tasks()-> tuple[list[dict], int]:
     uow = get_task_list_uow()
     service = TaskService(uow)
 
-    tasks = [TaskPayload(**asdict(task)).model_dump() for task in service.get_tasks()]
+    tasks = [TaskPayload(**asdict(task)).model_dump() 
+             for task in service.get_tasks()]
+    
+    logger.info(f"Retrieved {len(tasks)} tasks")
 
     return tasks, HTTPStatus.OK

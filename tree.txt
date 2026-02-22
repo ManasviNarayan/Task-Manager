@@ -4,55 +4,58 @@ C:.
 |   .gitignore
 |   ARCHITECURE.md
 |   directory.md
+|   main.py
 |   pyproject.toml
 |   README.md
 |   SCOPE.md
 |   tree.txt
-|           
 \---src
-    \---task_manager
-        |   __init__.py
-        |   
-        +---api
-        |   |   app.py
-        |   |   providers.py
-        |   |   schemas.py
-        |   |   __init__.py
-        |   |   
-        |   +---handlers
-        |   |       tasks.py
-        |   |       __init__.py
-        |   |       
-        |   \---v1
-        |       |   blueprints.py
-        |       |   __init__.py
-        |       |   
-        |       \---routes
-        |               tasks.py
-        |               __init__.py
-        |               
-        +---data
-        |   |   __init__.py
-        |   |   
-        |   +---repositories
-        |   |       interfaces.py
-        |   |       in_memory.py
-        |   |       __init__.py
-        |   |       
-        |   \---unit_of_work
-        |           interfaces.py
-        |           in_memory.py
-        |           __init__.py
-        |           
-        +---domain
-        |       models.py
-        |       __init__.py
-        |       
-        +---infrastructure
-        |       in_memory.py
-        |       __init__.py
-        |       
-        \---services
-                tasks.py
-                __init__.py
-                
+    +---task_manager
+    |   |   exceptions.py
+    |   |   logger.py
+    |   |   __init__.py
+    |   |   
+    |   +---api
+    |   |   |   app.py
+    |   |   |   providers.py
+    |   |   |   schemas.py
+    |   |   |   __init__.py
+    |   |   |   
+    |   |   +---handlers
+    |   |   |   |   tasks.py
+    |   |   |   |   __init__.py
+    |   |   |   |           
+    |   |   +---v1
+    |   |   |   |   blueprints.py
+    |   |   |   |   __init__.py
+    |   |   |   |   
+    |   |   |   +---routes
+    |   |   |   |   |   tasks.py
+    |   |   |   |   |   __init__.py
+    |   |   |   |                     
+    |   +---data
+    |   |   |   __init__.py
+    |   |   |   
+    |   |   +---repositories
+    |   |   |   |   interfaces.py
+    |   |   |   |   in_memory.py
+    |   |   |   |   __init__.py
+    |   |   |   |             
+    |   |   +---unit_of_work
+    |   |   |   |   interfaces.py
+    |   |   |   |   in_memory.py
+    |   |   |   |   __init__.py
+    |   |   |   |             
+    |   +---domain
+    |   |   |   models.py
+    |   |   |   __init__.py
+    |   |   |             
+    |   +---infrastructure
+    |   |   |   in_memory.py
+    |   |   |   __init__.py
+    |   |   |            
+    |   +---services
+    |   |   |   tasks.py
+    |   |   |   __init__.py
+    |   |   |   
+

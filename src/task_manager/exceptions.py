@@ -10,3 +10,7 @@ class NotFoundError(Exception):
 class DomainError(Exception):
     """Raised for general domain/business rule violations."""
     pass
+
+class DatabaseError(Exception):
+    """Raised for database-related issues."""
+    pass
