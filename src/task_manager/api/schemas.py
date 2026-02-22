@@ -2,7 +2,7 @@ from task_manager.domain.models import Status, Priority
 from pydantic import BaseModel
 from datetime import datetime
 
-class TaskSchema(BaseModel):
+class TaskPayload(BaseModel):
     id : str | None
     description : str
     deadline: datetime

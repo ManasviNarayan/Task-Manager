@@ -16,7 +16,7 @@ class Status(Enum):
     OVERDUE = 'Overdue'
     
 @dataclass
-class TaskModel:
+class Task:
     id : str | None
     description : str
     deadline: datetime

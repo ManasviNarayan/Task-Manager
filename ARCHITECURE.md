@@ -23,9 +23,11 @@ Flask-specific constructs are confined to the API layer. Domain and application 
 - Enforces boundary validation for inputs/outputs.  
 
 **Key Design Decisions:**  
-- **Blueprints & Versioning:** Endpoints are grouped using Flask Blueprints and versioned (`/api/v1/...`) for future backward compatibility.  
+- **Blueprints & Versioning:** Endpoints are grouped using Flask Blueprints and versioned (`/api/v1/...`) for future backward compatibility.
+- **Separation between Handler and Blueprints** Handlers for request/response have been kept separate from blueprints to allow different versions to point to same handlers to avoid code duplication.
 - **Handlers as Thin Controllers:** Each handler delegates to the service layer. The handler is responsible for input validation (via Pydantic schemas) and converting domain objects to JSON-serializable dicts.  
-- **Schemas:** Pydantic schemas act as a contract boundary between domain and API, using enums with `use_enum_values=True` to serialize domain enums to JSON.  
+- **Schemas:** Pydantic schemas act as a contract boundary between domain and API, using enums with `use_enum_values=True` to serialize domain enums to JSON.
+- **Providers** Centralizes construction and wiring of service-layer dependencies and acts as a dependency injector for handlers and API endpoints.  
 - **Separation of Concerns:** API layer contains no business logic; it only adapts between HTTP and domain/service layers.
 
 ---
