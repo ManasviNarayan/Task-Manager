@@ -17,6 +17,17 @@ class InMemoryTaskUnitOfWork(ITaskUnitOfWork):
     def tasks(self)-> InMemoryTaskRepository:
         return self._tasks
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is not None:
+            self.rollback()
+            logger.error("Transaction rolled back due to exception: %s", exc_val)
+        else:
+            self.commit()
+        return None
+
     def commit(self):
         try:
             # In-memory has no real transaction, but logger the intent

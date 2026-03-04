@@ -18,7 +18,7 @@ Flask-specific constructs are confined to the API layer. Domain and application 
 ## 1. API Layer (`task_manager.api`)
 
 **Responsibility:**  
-- Exposes the system’s functionality via HTTP endpoints (Flask).  
+- Exposes the system's functionality via HTTP endpoints (Flask).  
 - Handles request deserialization and response serialization.  
 - Enforces boundary validation for inputs/outputs.  
 
@@ -27,7 +27,9 @@ Flask-specific constructs are confined to the API layer. Domain and application 
 - **Separation between Handler and Blueprints** Handlers for request/response have been kept separate from blueprints to allow different versions to point to same handlers to avoid code duplication.
 - **Handlers as Thin Controllers:** Each handler delegates to the service layer. The handler is responsible for input validation (via Pydantic schemas) and converting domain objects to JSON-serializable dicts.  
 - **Schemas:** Pydantic schemas act as a contract boundary between domain and API, using enums with `use_enum_values=True` to serialize domain enums to JSON.
-- **Providers** Centralizes construction and wiring of service-layer dependencies and acts as a dependency injector for handlers and API endpoints.  
+- **Schema Conversion Methods:** Schemas implement `from_domain_model()` class method and `to_domain_model()` instance method for bidirectional conversion between domain models and API payloads.
+- **Providers:** Centralizes construction and wiring of service-layer dependencies and acts as a dependency injector for handlers and API endpoints. Factory functions return Unit of Work instances.
+- **Context Manager Integration:** Handlers use the `with` statement with Unit of Work for automatic transaction management (commit on success, rollback on exception).
 - **Separation of Concerns:** API layer contains no business logic; it only adapts between HTTP and domain/service layers.
 
 ---
@@ -53,7 +55,9 @@ Flask-specific constructs are confined to the API layer. Domain and application 
 
 **Key Design Decisions:**  
 - **Interface-based Design:** UoW depends on repository interfaces, allowing multiple implementations (in-memory vs database).  
-- **Encapsulation:** Services interact with UoW; they don’t manage repositories directly.  
+- **Context Manager Protocol:** UoW implements `__enter__` and `__exit__` methods to enable Python's `with` statement for automatic transaction management.
+- **Automatic Commit/Rollback:** On successful completion, `__exit__` calls `commit()`. On exception, `__exit__` calls `rollback()` to ensure data consistency.
+- **Encapsulation:** Services interact with UoW; they don't manage repositories directly.  
 - **Implementation Variants:** Currently in-memory for learning, with a DB implementation planned for the future.
 
 ---
@@ -103,3 +107,4 @@ Flask-specific constructs are confined to the API layer. Domain and application 
 - **Boundary Enforcement:** API layer and schema validation isolate the outside world from domain logic.  
 - **Testability:** In-memory implementations allow end-to-end testing without external dependencies.  
 - **Future-proofing:** Versioned APIs, interface-based UoW, and repository abstractions enable easy replacement and extension.
+
