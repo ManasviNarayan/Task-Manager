@@ -43,3 +43,18 @@ class InMemoryTaskRepository(ITaskRepository):
         except Exception as e:
             logger.exception("Unexpected repository error in get_task for id %s", task_id)
             raise DatabaseError(f"Unexpected error while accessing task id {task_id}")
+
+    def add_task(self, task: Task) -> Task:
+        try:
+            task_dict = asdict(task)
+            self._db.tasks.append(task_dict)
+            logger.info("Added task with id %s to in-memory DB", task.id)
+            return task
+
+        except (TypeError, ValueError) as e:
+            logger.error("Data error while adding task: %s", str(e))
+            raise DatabaseError("Failed to add task to storage")
+
+        except Exception as e:
+            logger.exception("Unexpected repository error in add_task")
+            raise DatabaseError("Unexpected error while adding task")

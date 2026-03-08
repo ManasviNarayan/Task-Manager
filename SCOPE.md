@@ -16,11 +16,20 @@ The scope is intentionally limited to focus on correctness, maintainability, and
 #### Task Management
 - Create, update, retrieve, and filter tasks
 - Tasks contain:
-  - description
-  - deadline
-  - status
-  - priority
+  - description (required)
+  - deadline (optional - can be blank for general tasks)
+  - status (defaults to TODO)
+  - priority (defaults to LOW)
   - subtasks
+
+#### Task Creation
+- Users can create a task with minimal information
+- Only **description** is required to create a task
+- Optional fields with defaults:
+  - **deadline**: If not provided, the task is a general task with no specific due date
+  - **status**: Defaults to `TODO` if not specified
+  - **priority**: Defaults to `LOW` if not specified
+- Task ID is auto-generated if not provided
 
 #### Subtask Management
 - Create and update subtasks associated with a task
@@ -75,6 +84,7 @@ The scope is intentionally limited to focus on correctness, maintainability, and
   - response serialization
   - error mapping
 - Business logic is not implemented in the API layer
+- Separate request and response schemas for create and fetch operations
 
 ---
 
@@ -141,3 +151,4 @@ The following may be explored in later iterations:
 - Read-only query optimization
 - Alternative persistence implementations
 - Frontend or CLI integration
+

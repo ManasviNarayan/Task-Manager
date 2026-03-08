@@ -1,9 +1,10 @@
 # task_manager/services/tasks.py
 from task_manager.data.unit_of_work.interfaces import ITaskUnitOfWork
 from task_manager.domain.models import Task
-from task_manager.exceptions import DatabaseError, DomainError, NotFoundError
+from task_manager.exceptions import DatabaseError, DomainError, NotFoundError, ValidationError
 from task_manager.logger import get_logger
 import logging
+import uuid
 
 logger = get_logger(__name__, logging.INFO)
 
@@ -46,3 +47,30 @@ class TaskService:
         except Exception as e:
             logger.exception("Unexpected error in TaskService.get_task for id %s", task_id)
             raise DomainError(f"Service failed to fetch task with id {task_id}") from e
+
+    def create_task(self, task: Task) -> Task:
+        try:
+            # Generate ID if not provided (client may omit it)
+            if not task.id:
+                task.id = str(uuid.uuid4())
+            
+            # Check for duplicate ID
+            existing_task = self.task_uow.tasks.get_task(task.id)
+            if existing_task:
+                raise ValidationError(f"Task with id {task.id} already exists")
+            
+            # Add task through repository
+            created_task = self.task_uow.tasks.add_task(task)
+            logger.info("Created task with id %s", task.id)
+            return created_task
+
+        except ValidationError:
+            raise
+
+        except DatabaseError as e:
+            logger.error("Database error in create_task: %s", str(e))
+            raise
+
+        except Exception as e:
+            logger.exception("Unexpected error in TaskService.create_task")
+            raise DomainError("Service failed to create task") from e

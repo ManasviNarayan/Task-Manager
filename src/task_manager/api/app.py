@@ -3,6 +3,7 @@ from task_manager.api.v1.blueprints import get_v1_blueprint
 from task_manager.exceptions import ValidationError, NotFoundError, DomainError, DatabaseError
 from http import HTTPStatus
 from flask import Flask
+from pydantic import ValidationError as PydanticValidationError
 
 def create_app()-> Flask:
     app = Flask(__name__)
@@ -10,7 +11,14 @@ def create_app()-> Flask:
     # blueprints
     app.register_blueprint(get_v1_blueprint())
 
-    #   error handlers    
+    #   error handlers
+    
+    # Pydantic validation errors (API boundary)
+    @app.errorhandler(PydanticValidationError)
+    def handle_pydantic_validation_error(err):
+        response = {"error": "Validation failed", "message": str(err)}
+        return response, HTTPStatus.BAD_REQUEST
+    
     @app.errorhandler(ValidationError)
     def handle_validation_error(err):
         response = {"error": "Validation failed", "message": str(err)}
