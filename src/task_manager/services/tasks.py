@@ -1,7 +1,8 @@
 # task_manager/services/tasks.py
 from task_manager.data.unit_of_work.interfaces import ITaskUnitOfWork
 from task_manager.domain.models import Task, History, HistoryType
-from task_manager.exceptions import DatabaseError, DomainError, NotFoundError, ValidationError
+from task_manager.domain import pipelines
+from task_manager.exceptions import DatabaseError, DomainError, NotFoundError, ValidationError, DomainValidationError
 from task_manager.logger import get_logger
 from dataclasses import asdict
 import logging
@@ -80,6 +81,13 @@ class TaskService:
 
     def create_task(self, task: Task) -> Task:
         try:
+            # Run domain validations
+            validation_result = pipelines.task_create_validation_pipeline(task.deadline)
+            
+            if validation_result.is_err():
+                error_msg = validation_result.error or "Validation failed"
+                raise DomainValidationError([error_msg])
+            
             # Generate ID if not provided (client may omit it)
             if not task.id:
                 task.id = str(uuid.uuid4())
@@ -105,7 +113,7 @@ class TaskService:
             logger.info("Created task with id %s", task.id)
             return created_task
 
-        except ValidationError:
+        except (ValidationError, DomainValidationError):
             raise
 
         except DatabaseError as e:
@@ -123,6 +131,33 @@ class TaskService:
             if not existing_task:
                 logger.warning("Task with id %s not found for update", task_id)
                 raise NotFoundError(f"Task with id {task_id} not found")
+            
+            # Run domain validations for update
+            # Get the new values from the task being updated
+            new_deadline = task.deadline
+            new_status = task.status
+            
+            validation_result = pipelines.task_update_validation_pipeline(
+                old_task=existing_task,
+                new_deadline=new_deadline,
+                new_status=new_status
+            )
+            
+            if validation_result.is_err():
+                error_msg = validation_result.error or "Validation failed"
+                raise DomainValidationError([error_msg])
+            
+            # If status is being changed to DONE, validate task completion constraint
+            if new_status is not None and new_status != existing_task.status:
+                subtasks = self.task_uow.subtasks.get_subtasks(task_id)
+                completion_validation = pipelines.task_status_change_pipeline(
+                    task=existing_task,
+                    new_status=new_status,
+                    subtasks=subtasks
+                )
+                if completion_validation.is_err():
+                    error_msg = completion_validation.error or "Validation failed"
+                    raise DomainValidationError([error_msg])
             
             # Capture old value for history
             old_value = asdict(existing_task)
@@ -144,7 +179,7 @@ class TaskService:
             logger.info("Updated task with id %s", task_id)
             return updated_task
 
-        except NotFoundError:
+        except (NotFoundError, DomainValidationError):
             raise
 
         except DatabaseError as e:

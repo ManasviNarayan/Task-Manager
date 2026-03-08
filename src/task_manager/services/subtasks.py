@@ -1,7 +1,8 @@
 # task_manager/services/subtasks.py
 from task_manager.data.unit_of_work.interfaces import ISubtaskUnitOfWork, ITaskUnitOfWork
 from task_manager.domain.models import Subtask, History, HistoryType
-from task_manager.exceptions import DatabaseError, DomainError, NotFoundError, ValidationError
+from task_manager.domain import pipelines
+from task_manager.exceptions import DatabaseError, DomainError, NotFoundError, ValidationError, DomainValidationError
 from task_manager.logger import get_logger
 from dataclasses import asdict
 import logging
@@ -121,6 +122,16 @@ class SubtaskService:
                 logger.warning("Task with id %s not found for subtask creation", task_id)
                 raise NotFoundError(f"Task with id {task_id} not found")
             
+            # Run domain validations for subtask creation
+            validation_result = pipelines.subtask_create_validation_pipeline(
+                parent_deadline=task.deadline,
+                subtask_deadline=subtask.deadline
+            )
+            
+            if validation_result.is_err():
+                error_msg = validation_result.error or "Validation failed"
+                raise DomainValidationError([error_msg])
+            
             # Get old subtask count for history
             old_subtasks = self.subtask_uow.subtasks.get_subtasks(task_id)
             old_count = len(old_subtasks)
@@ -154,7 +165,7 @@ class SubtaskService:
             logger.info("Created subtask with id %s for task %s", subtask.id, task_id)
             return created_subtask
 
-        except NotFoundError:
+        except (NotFoundError, DomainValidationError):
             raise
 
         except ValidationError:
@@ -177,8 +188,27 @@ class SubtaskService:
                 logger.warning("Subtask with id %s not found for update", subtask_id)
                 raise NotFoundError(f"Subtask with id {subtask_id} not found")
             
-            # Get task_id for history
+            # Get task_id and parent task for validation
             task_id = existing_subtask.task_id
+            
+            if self.task_uow is None:
+                raise DomainError("Task UoW required to validate subtask updates")
+            
+            parent_task = self.task_uow.tasks.get_task(task_id)
+            if not parent_task:
+                raise NotFoundError(f"Parent task with id {task_id} not found")
+            
+            # Run domain validations for subtask update
+            validation_result = pipelines.subtask_update_validation_pipeline(
+                parent_task=parent_task,
+                old_subtask=existing_subtask,
+                new_deadline=subtask.deadline,
+                new_status=subtask.status
+            )
+            
+            if validation_result.is_err():
+                error_msg = validation_result.error or "Validation failed"
+                raise DomainValidationError([error_msg])
             
             # Get old subtask count for history
             old_subtasks = self.subtask_uow.subtasks.get_subtasks(task_id)
@@ -211,7 +241,7 @@ class SubtaskService:
             logger.info("Updated subtask with id %s", subtask_id)
             return updated_subtask
 
-        except NotFoundError:
+        except (NotFoundError, DomainValidationError):
             raise
 
         except DatabaseError as e:

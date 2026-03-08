@@ -21,6 +21,8 @@ This document captures key architectural and design decisions made during the de
 14. [Context Manager for Unit of Work](#14-context-manager-for-unit-of-work)
 15. [Subtask Unit of Work Inheritance](#15-subtask-unit-of-work-inheritance)
 16. [Subtask History Tracking](#16-subtask-history-tracking)
+17. [Domain Validations: FP and Monad](#17-Domain-Validations-FP-and-Monad)
+18. [Design Evolution](#Design-Evolution)
 
 ---
 
@@ -859,8 +861,8 @@ During implementation of the subtask feature, two gaps were identified:
 1. **Missing Task-Side History for Subtask Updates**: The `update_subtask()` method in `SubtaskService` recorded subtask-level history but did NOT record task-side history (unlike `create_subtask()` and `delete_subtask()` which did). This meant updates to subtasks were not reflected in the task's history timeline.
 
 2. **No Way to Retrieve Subtask History**: There was no endpoint to retrieve history for subtasks. The existing history endpoints only supported:
-   - `GET /tasks/history` - All history
-   - `GET /tasks/history/<task_id>` - History filtered by task_id only (excluded subtask entries since they have different entity_id)
+   - `GET /tasks/history` - All historyGET /tasks/history/<task_id>` - History filtered by
+   - ` task_id only (excluded subtask entries since they have different entity_id)
 
 ### Solution Design
 
@@ -906,7 +908,149 @@ Added two new API endpoints:
 
 ---
 
-## Design Evolution
+## 17. Domain Validations: FP and Monad
+
+### Decision
+Introduce functional programming concepts into the domain layer with a simplified Result monad, composable validators, and pipeline-based validation chains.
+
+### Implementation
+
+#### Result Monad
+```python
+# domain/results.py
+class Result(Generic[T]):
+    def __init__(self, value=None, error=None):
+        self._value = value
+        self._error = error
+    
+    @staticmethod
+    def Ok(value: T) -> 'Result[T]':
+        return Result(value=value)
+    
+    @staticmethod
+    def Err(error: str) -> 'Result[T]':
+        return Result(error=error)
+    
+    def is_ok(self) -> bool:
+        return self._error is None
+    
+    def map(self, func: Callable[[T], U]) -> 'Result[U]':
+        """Apply func to value if Ok, keep error otherwise."""
+        if self.is_ok():
+            try:
+                return Result.Ok(func(self._value))
+            except Exception as e:
+                return Result.Err(str(e))
+        return self
+    
+    def bind(self, func: Callable[[T], 'Result[U]']) -> 'Result[U]':
+        """Chain a function that returns a Result."""
+        if self.is_ok():
+            try:
+                return func(self._value)
+            except Exception as e:
+                return Result.Err(str(e))
+        return self
+```
+
+#### Validators
+```python
+# domain/validations.py
+def validate_deadline(deadline: datetime | None) -> Result[datetime | None]:
+    """Check if deadline is not in the past."""
+    if deadline is None:
+        return Result.Ok(None)
+    today = datetime.now().date()
+    if deadline.date() < today:
+        return Result.Err(f"Deadline cannot be in the past...")
+    return Result.Ok(deadline)
+
+def validate_status_transition(from_status: Status | None, to_status: Status) -> Result[Status]:
+    """Validate that a status transition is allowed."""
+    # Common for both tasks and subtasks
+    ...
+
+def validate_deadline_for_subtask(parent_deadline, subtask_deadline):
+    """Validate subtask deadline does not exceed parent."""
+    ...
+```
+
+#### Pipelines
+```python
+# domain/pipelines.py
+def create_pipeline(validators: List[Callable[[], Result]]) -> Result:
+    """Create a validation pipeline from a list of validator callables."""
+    results = [v() for v in validators]
+    return combine(*results)
+
+# Pre-configured pipelines
+task_create_validation_pipeline = create_pipeline([...])
+task_update_validation_pipeline = create_pipeline([...])
+subtask_create_validation_pipeline = create_pipeline([...])
+```
+
+### Alternatives Considered
+
+**Option 1: Continue with pure exception-based validation**
+- **Pros**: Python-idiomatic, familiar to Python developers
+- **Cons**: Error handling is imperative, not composable
+
+**Option 2: Use external FP library (e.g., returns, pyfunctional)**
+- **Pros**: Battle-tested implementations
+- **Cons**: Additional dependencies, may be overkill for this scope
+
+**Option 3: Keep complex dataclass Result (original)**
+- **Pros**: Already implemented
+- **Cons**: Over-engineered, map/bind not utilized
+
+**Option 4: Simplified class-based Result (chosen)**
+- **Pros**: No dependencies, clear intent,- **Cons**: Must implement from scratch
+
+### Rationale enables functional composition
+
+
+1. **Explicit Error Paths**: The Result monad makes success/failure explicit in the type system, making validation errors easier to handle and test.
+
+2. **Composable Validation**: Validators are pure functions that can be combined in different ways. This enables:
+   - Reusing validators across different operations
+   - Easy testing in isolation
+   - Clear separation of "what to check" (validators) from "when to check" (pipelines)
+
+3. **Pipeline Pattern**: The `create_pipeline()` factory function:
+   - Separates configuration from execution
+   - Makes validation order explicit
+   - Enables easy addition/removal of validators
+
+4. **Service Layer Clarity**: Services simply call pipelines:
+   ```python
+   validation_result = pipelines.task_create_validation_pipeline(deadline)
+   if validation_result.is_err():
+       raise DomainValidationError([validation_result.error])
+   ```
+
+5. **Functional Style Benefits**:
+   - **Testability**: Pure functions with no side effects
+   - **Predictability**: Same input always produces same output
+   - **Composition**: Small validators combine into complex validation rules
+
+### Design Principles Applied
+
+- **Validators tell "what" to check**: Each validation function has a single responsibility
+- **Pipelines tell "when" to use them**: Pre-configured pipelines define validation order
+- **Services orchestrate**: Services call pipelines and handle results
+
+### Trade-offs
+- ✅ Explicit error handling in types
+- ✅ Composable and reusable validators
+- ✅ Clear separation of concerns
+- ✅ Easy to add new validations
+- ⚠️ Some additional code complexity
+- ⚠️ Requires understanding of monad concept
+- ⚠️ FP style may feel unfamiliar to some team members
+
+---
+
+# Design Evolution
 
 ### Key Iterations
 
@@ -943,3 +1087,18 @@ Added two new API endpoints:
 - Added new repository methods: `get_history_for_task_subtasks()` and `get_history_for_subtask()`
 - Added new endpoints: `GET /tasks/<task_id>/subtasks/history` and `GET /tasks/<task_id>/subtasks/history/<subtask_id>`
 - Now all subtask operations (create, update, delete) consistently record both subtask-level and task-level history
+
+**Iteration 7: Functional Programming & Monad Implementation**
+- Replaced complex dataclass-based Result with simplified class-based Result
+- Added `map()` and `bind()` methods for functional composition
+- Kept `combine()` function for error accumulation
+- Refactored validations into simpler functions:
+  - `validate_deadline()` - check if not in past
+  - `validate_deadline_for_update()` - check new value only
+  - `validate_deadline_for_subtask()` - check within parent
+  - `validate_status_transition()` - common for both tasks and subtasks
+  - `validate_task_completion_with_subtasks()` - task cannot be DONE if subtask is TODO
+- Created `create_pipeline()` factory function in pipelines.py
+- Created pre-configured pipelines: `task_create_validation_pipeline`, `subtask_create_validation_pipeline`, `task_update_validation_pipeline`, `subtask_update_validation_pipeline`, `task_delete_validation_pipeline`
+- Updated services to use new pipeline names and error handling
+- Validators tell "what" to check, pipelines tell "when" to use them, services orchestrate
