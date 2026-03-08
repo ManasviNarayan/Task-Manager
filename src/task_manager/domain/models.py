@@ -25,3 +25,23 @@ class Task:
     status: Status
     priority: Priority
 
+
+class HistoryType(Enum):
+    TASK_CREATED = "task_created"
+    TASK_UPDATED = "task_updated"
+    TASK_DELETED = "task_deleted"
+    SUBTASK_CREATED = "subtask_created"
+    SUBTASK_UPDATED = "subtask_updated"
+    SUBTASK_DELETED = "subtask_deleted"
+
+
+@dataclass
+class History:
+    id: str
+    entity_id: str  # ID of the task or subtask
+    entity_type: str  # "task" or "subtask"
+    change_type: HistoryType  # What happened
+    timestamp: datetime
+    old_value: Optional[str]  # JSON serialized old state
+    new_value: Optional[str]  # JSON serialized new state
+

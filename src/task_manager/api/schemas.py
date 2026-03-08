@@ -1,5 +1,5 @@
 # task_manager/api/schemas.py
-from task_manager.domain.models import Status, Priority, Task
+from task_manager.domain.models import Status, Priority, Task, History, HistoryType
 from pydantic import BaseModel, Field
 from datetime import datetime
 from dataclasses import asdict
@@ -97,4 +97,34 @@ class UpdateTaskRequestPayload(BaseModel):
             status=Status(self.status) if self.status is not None else existing_task.status,
             priority=Priority(self.priority) if self.priority is not None else existing_task.priority
         )
+
+
+class HistoryResponsePayload(BaseModel):
+    """Schema for history responses.
+    
+    Contains all history fields including:
+    - id: The unique identifier
+    - entity_id: ID of the task or subtask
+    - entity_type: "task" or "subtask"
+    - change_type: What happened (created, updated, deleted)
+    - timestamp: When the change occurred
+    - old_value: Previous state (JSON string)
+    - new_value: New state (JSON string)
+    """
+    id: str
+    entity_id: str
+    entity_type: str
+    change_type: HistoryType
+    timestamp: datetime
+    old_value: Optional[str]
+    new_value: Optional[str]
+
+    model_config = {
+        "use_enum_values": True
+    }
+
+    @classmethod
+    def from_domain_model(cls, history: History) -> "HistoryResponsePayload":
+        """Convert domain model to response payload."""
+        return cls(**asdict(history))
 

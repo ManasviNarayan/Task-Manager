@@ -1,5 +1,5 @@
 # task_manager/data/unit_of_work/interfaces.py
-from task_manager.data.repositories.interfaces import ITaskRepository
+from task_manager.data.repositories.interfaces import ITaskRepository, IHistoryRepository
 from typing import Self
 
 from abc import ABC, abstractmethod
@@ -8,6 +8,12 @@ class ITaskUnitOfWork(ABC):
     @property
     @abstractmethod
     def tasks(self)-> ITaskRepository:
+        pass
+
+    @property
+    @abstractmethod
+    def history(self) -> IHistoryRepository:
+        """Repository for history entries."""
         pass
 
     @abstractmethod

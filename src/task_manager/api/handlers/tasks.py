@@ -1,7 +1,7 @@
 # task_manager/api/handlers/tasks.py
 from task_manager.api.providers import get_task_list_uow
 from task_manager.services.tasks import TaskService
-from task_manager.api.schemas import TaskRequestPayload, TaskResponsePayload, UpdateTaskRequestPayload
+from task_manager.api.schemas import TaskRequestPayload, TaskResponsePayload, UpdateTaskRequestPayload, HistoryResponsePayload
 from task_manager.logger import get_logger
 from task_manager.exceptions import NotFoundError
 from http import HTTPStatus
@@ -30,6 +30,23 @@ def get_task(task_id: str) -> tuple[dict, int]:
         task = service.get_task(task_id)
         logger.info(f"Retrieved task with id {task_id}")
         return TaskResponsePayload.from_domain_model(task).model_dump(), HTTPStatus.OK
+
+
+def get_history(task_id: str = None) -> tuple[list[dict], int]:
+    """Get history entries, optionally filtered by task_id."""
+    with get_task_list_uow() as uow:
+        service = TaskService(uow)
+
+        history = service.get_task_history(task_id)
+        
+        history_payload = [
+            HistoryResponsePayload.from_domain_model(h).model_dump() 
+            for h in history
+        ]
+        
+        logger.info(f"Retrieved {len(history_payload)} history entries")
+
+    return history_payload, HTTPStatus.OK
 
 
 def create_task() -> tuple[dict, int]:

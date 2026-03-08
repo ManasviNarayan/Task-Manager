@@ -1,6 +1,6 @@
 # task_manager/data/repositories/in_memory/tasks.py
-from task_manager.data.repositories.interfaces import ITaskRepository
-from task_manager.domain.models import Task
+from task_manager.data.repositories.interfaces import ITaskRepository, IHistoryRepository
+from task_manager.domain.models import Task, History
 from task_manager.logger import get_logger
 from task_manager.exceptions import DatabaseError
 from dataclasses import asdict
@@ -97,3 +97,44 @@ class InMemoryTaskRepository(ITaskRepository):
         except Exception as e:
             logger.exception("Unexpected repository error in delete_task")
             raise DatabaseError("Unexpected error while deleting task")
+
+
+class InMemoryHistoryRepository(IHistoryRepository):
+    def __init__(self, db):
+        self._db = db
+
+    def get_history(self, entity_id: str | None = None) -> list[History]:
+        try:
+            if entity_id:
+                history_entries = [
+                    History(**h) for h in self._db.history 
+                    if h['entity_id'] == entity_id
+                ]
+            else:
+                history_entries = [History(**h) for h in self._db.history]
+            
+            logger.debug("Fetched %d history entries from in-memory DB", len(history_entries))
+            return history_entries
+
+        except (TypeError, ValueError) as e:
+            logger.error("Data error while fetching history: %s", str(e))
+            raise DatabaseError("Failed to map stored history data to domain model")
+
+        except Exception as e:
+            logger.exception("Unexpected repository error in get_history")
+            raise DatabaseError("Unexpected error while accessing history")
+
+    def add_history(self, history: History) -> History:
+        try:
+            history_dict = asdict(history)
+            self._db.history.append(history_dict)
+            logger.info("Added history entry with id %s to in-memory DB", history.id)
+            return history
+
+        except (TypeError, ValueError) as e:
+            logger.error("Data error while adding history: %s", str(e))
+            raise DatabaseError("Failed to add history to storage")
+
+        except Exception as e:
+            logger.exception("Unexpected repository error in add_history")
+            raise DatabaseError("Unexpected error while adding history")
