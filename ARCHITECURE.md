@@ -325,6 +325,25 @@ The history tracking feature is integrated throughout all layers:
 - **Service Layer**: `TaskService._record_history()` helper records changes atomically with each operation
 - **API Layer**: `GET /tasks/history` and `GET /tasks/history/<task_id>` endpoints
 
+### Unit of Work Variants
+The system has two UoW implementations for different use cases:
+
+```python
+# Unit of Work Interface Hierarchy
+ITaskUnitOfWork (ABC)
+    │
+    ├── InMemoryTaskUnitOfWork  # For task-only operations
+    │
+    └── ISubtaskUnitOfWork (inherits from ITaskUnitOfWork)
+            │
+            └── InMemorySubtaskUnitOfWork  # For subtask operations with cross-UoW transactions
+```
+
+**Key Design:**
+- `ISubtaskUnitOfWork` inherits from `ITaskUnitOfWork`, gaining all properties (tasks, subtasks, history)
+- `InMemorySubtaskUnitOfWork` automatically commits/rollbacks both itself and the associated `ITaskUnitOfWork`
+- Services accept `ITaskUnitOfWork` and can work with either implementation polymorphically
+
 ---
 
 ## Design Principles

@@ -68,5 +68,27 @@ class InMemoryDB:
         "status": Status.OVERDUE,
         "priority": Priority.LOW,
     },]
-        self.subtasks = []
+        self.subtasks = [
+            {
+                "id": "subtask-001",
+                "task_id": "task-001",
+                "description": "Define business requirements",
+                "deadline": t,
+                "status": Status.TODO,
+            },
+            {
+                "id": "subtask-002",
+                "task_id": "task-001",
+                "description": "Define functional requirements",
+                "deadline": t,
+                "status": Status.IN_PROGRESS,
+            },
+            {
+                "id": "subtask-003",
+                "task_id": "task-002",
+                "description": "Create repository interface",
+                "deadline": t,
+                "status": Status.DONE,
+            },
+        ]
         self.history = sample_history

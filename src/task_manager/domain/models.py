@@ -26,6 +26,15 @@ class Task:
     priority: Priority
 
 
+@dataclass
+class Subtask:
+    id: Optional[str]
+    task_id: str  # Parent task ID
+    description: str
+    deadline: Optional[datetime]  # Optional - must not exceed parent task deadline
+    status: Status
+
+
 class HistoryType(Enum):
     TASK_CREATED = "task_created"
     TASK_UPDATED = "task_updated"

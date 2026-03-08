@@ -19,6 +19,8 @@ This document captures key architectural and design decisions made during the de
 12. [Provider Pattern & Dependency Injection](#12-provider-pattern--dependency-injection)
 13. [Schema Bidirectional Conversion](#13-schema-bidirectional-conversion)
 14. [Context Manager for Unit of Work](#14-context-manager-for-unit-of-work)
+15. [Subtask Unit of Work Inheritance](#15-subtask-unit-of-work-inheritance)
+16. [Subtask History Tracking](#16-subtask-history-tracking)
 
 ---
 
@@ -729,6 +731,181 @@ def get_tasks() -> tuple[list[dict], int]:
 
 ---
 
+## 15. Subtask Unit of Work Inheritance
+
+### Decision
+Have `ISubtaskUnitOfWork` inherit from `ITaskUnitOfWork`, with automatic cross-UoW transaction coordination.
+
+### Interface Design
+```python
+# data/unit_of_work/interfaces.py
+class ITaskUnitOfWork(ABC):
+    @property
+    @abstractmethod
+    def tasks(self) -> ITaskRepository:
+        pass
+
+    @property
+    @abstractmethod
+    def subtasks(self) -> ISubtaskRepository:
+        pass
+
+    @property
+    @abstractmethod
+    def history(self) -> IHistoryRepository:
+        pass
+
+    # ... context manager and commit/rollback methods
+
+
+class ISubtaskUnitOfWork(ITaskUnitOfWork):
+    """Subtask Unit of Work that inherits from TaskUnitOfWork.
+    
+    Inherits all properties (tasks, subtasks, history) from ITaskUnitOfWork.
+    On commit/rollback, it automatically commits/rollbacks both itself and
+    the parent class for atomic cross-UoW transactions.
+    """
+    pass
+```
+
+### Implementation
+```python
+# data/unit_of_work/in_memory.py
+class InMemorySubtaskUnitOfWork(InMemoryTaskUnitOfWork):
+    """Unit of Work for subtask operations that inherits from TaskUnitOfWork."""
+    
+    def __init__(self, db):
+        super().__init__(db)  # Inherits all repositories from parent
+
+    def commit(self):
+        # Commit parent first, then self
+        super().commit()
+        logger.debug("Committing subtask transaction")
+
+    def rollback(self):
+        # Rollback parent first, then self
+        super().rollback()
+        logger.debug("Rolling back subtask transaction")
+```
+
+### Alternatives Considered
+
+**Option 1: Separate UoW classes (original approach)**
+```python
+class ISubtaskUnitOfWork(ABC):
+    # Completely separate interface with no inheritance
+    @property
+    @abstractmethod
+    def subtasks(self) -> ISubtaskRepository:
+        pass
+```
+- **Pros**: Clear separation, explicit about what each UoW provides
+- **Cons**: Duplicated interface code, harder to use polymorphicly
+
+**Option 2: Composition with separate commit (original approach)**
+```python
+def get_subtask_uow() -> ISubtaskUnitOfWork:
+    # Manually pass task_uow to subtask_uow
+    task_uow = InMemoryTaskUnitOfWork(_db)
+    return InMemorySubtaskUnitOfWork(_db, task_uow)
+```
+- **Pros**: Explicit dependency injection
+- **Cons**: Handler must manage both UoWs manually
+
+**Option 3: Inheritance with cross-UoW commit (chosen)**
+```python
+class ISubtaskUnitOfWork(ITaskUnitOfWork):
+    # Inherits all properties from ITaskUnitOfWork
+    @property
+    @abstractmethod
+    def task_uow(self) -> ITaskUnitOfWork:
+        pass
+```
+- **Pros**: Simpler interface, polymorphism works naturally, automatic cross-UoW transactions
+- **Cons**: Slightly more complex implementation
+
+### Rationale
+
+- **Simpler interface**: Services can accept either UoW type since `ISubtaskUnitOfWork` inherits from `ITaskUnitOfWork`
+- **Automatic transactions**: The subtask UoW automatically commits/rollbacks the associated task UoW, ensuring atomicity
+- **Polymorphism**: A function accepting `ITaskUnitOfWork` can receive either type
+- **Less handler code**: Handlers only need to manage one UoW, not coordinate multiple
+
+### Provider Integration
+```python
+# api/providers.py
+def get_subtask_uow() -> ISubtaskUnitOfWork:
+    """Factory creates both UoWs and links them."""
+    task_uow = InMemoryTaskUnitOfWork(_db)
+    return InMemorySubtaskUnitOfWork(_db, task_uow)
+```
+
+### Trade-offs
+- ✅ Simpler service interfaces (accept ITaskUnitOfWork)
+- ✅ Automatic cross-UoW atomicity
+- ✅ Polymorphism works naturally
+- ✅ Less handler code - no need to manually manage multiple UoWs
+- ⚠️ Slightly more complex implementation
+- ⚠️ Requires understanding of inheritance relationship
+
+---
+
+## 16. Subtask History Tracking
+
+### Gap Identified
+
+During implementation of the subtask feature, two gaps were identified:
+
+1. **Missing Task-Side History for Subtask Updates**: The `update_subtask()` method in `SubtaskService` recorded subtask-level history but did NOT record task-side history (unlike `create_subtask()` and `delete_subtask()` which did). This meant updates to subtasks were not reflected in the task's history timeline.
+
+2. **No Way to Retrieve Subtask History**: There was no endpoint to retrieve history for subtasks. The existing history endpoints only supported:
+   - `GET /tasks/history` - All history
+   - `GET /tasks/history/<task_id>` - History filtered by task_id only (excluded subtask entries since they have different entity_id)
+
+### Solution Design
+
+#### Fix 1: Task-Side History for Subtask Updates
+Added `_record_task_history()` call in `update_subtask()` method to ensure all subtask operations (create, update, delete) consistently record task-side history with subtask count changes.
+
+#### Fix 2: New Repository Methods
+Added two new methods to `IHistoryRepository`:
+
+```python
+def get_history_for_task_subtasks(self, task_id: str) -> list[History]:
+    """Get all history entries for a task's subtasks (not including task-level history)."""
+    pass
+
+def get_history_for_subtask(self, subtask_id: str) -> list[History]:
+    """Get all history entries for a specific subtask."""
+    pass
+```
+
+The implementation in `InMemoryHistoryRepository` queries subtasks by task_id first, then retrieves history for those subtask IDs.
+
+#### Fix 3: New Endpoints
+Added two new API endpoints:
+- `GET /tasks/<task_id>/subtasks/history` - Get all subtask history for a task
+- `GET /tasks/<task_id>/subtasks/history/<subtask_id>` - Get history for a specific subtask
+
+### Design Decisions
+
+1. **Query Strategy**: The repository queries subtasks first to get their IDs, then filters history by those IDs. This approach works well for the in-memory implementation and maintains separation of concerns.
+
+2. **Entity Type Filtering**: The history queries explicitly filter by `entity_type == 'subtask'` to ensure only subtask history is returned, not task-level history.
+
+3. **Consistent History Recording**: All subtask operations now record both:
+   - Subtask-level history (entity_id = subtask_id, entity_type = 'subtask')
+   - Task-level history (entity_id = task_id, entity_type = 'task' with subtask count changes)
+
+### Trade-offs
+- ✅ Complete audit trail for subtask operations
+- ✅ Consistent history recording across all CRUD operations
+- ✅ New endpoints enable detailed subtask history retrieval
+- ⚠️ Additional repository methods increase interface size
+- ⚠️ Query strategy may need optimization for database implementations
+
+---
+
 ## Design Evolution
 
 ### Key Iterations
@@ -753,3 +930,16 @@ def get_tasks() -> tuple[list[dict], int]:
 - Implemented context manager protocol (`__enter__`/`__exit__`) on Unit of Work
 - Added bidirectional schema conversion methods (`from_domain_model`/`to_domain_model`)
 - Integrated context managers in handlers for automatic transaction management
+
+**Iteration 5: Subtask UoW Inheritance**
+- Created `ISubtaskUnitOfWork` interface inheriting from `ITaskUnitOfWork`
+- Implemented `InMemorySubtaskUnitOfWork` that inherits from `InMemoryTaskUnitOfWork`
+- Implemented cross-UoW transactions: subtask UoW's `commit()`/`rollback()` calls `super()` to automatically commit/rollback both the subtask and task UoWs
+- Added history tracking endpoints: `GET /tasks/history` and `GET /tasks/history/<task_id>`
+- This design enables seamless atomic transactions without handlers needing to manually manage multiple UoWs
+
+**Iteration 6: Subtask History Tracking**
+- Fixed bug: Added missing `_record_task_history()` call in `update_subtask()` method
+- Added new repository methods: `get_history_for_task_subtasks()` and `get_history_for_subtask()`
+- Added new endpoints: `GET /tasks/<task_id>/subtasks/history` and `GET /tasks/<task_id>/subtasks/history/<subtask_id>`
+- Now all subtask operations (create, update, delete) consistently record both subtask-level and task-level history
