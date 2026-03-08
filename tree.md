@@ -1,4 +1,4 @@
-src/task_manager/
+```src/task_manager/
 ├── __init__.py
 ├── exceptions.py          # Custom exception classes
 ├── logger.py              # Logger factory
@@ -41,3 +41,4 @@ src/task_manager/
 └── infrastructure/
     ├── __init__.py
     └── in_memory.py       # In-memory database
+    ```
