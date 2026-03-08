@@ -569,66 +569,82 @@ def get_tasks() -> tuple[list[dict], int]:
 ## 13. Schema Bidirectional Conversion
 
 ### Decision
-Implement bidirectional conversion methods in Pydantic schemas to transform between domain models and API payloads.
+Implement bidirectional conversion methods in Pydantic schemas to transform between domain models and API payloads, with separate schemas for request and response.
 
 ### Implementation
 ```python
 # api/schemas.py
-class TaskPayload(BaseModel):
-    id : str | None
-    description : str
-    deadline: datetime
-    status: Status
-    priority : Priority
+from task_manager.domain.models import Task, Status, Priority
 
-    model_config = {
-        "use_enum_values": True
-    }
+class TaskRequestPayload(BaseModel):
+    """Schema for creating a new task.
+    Only description is required; other fields have sensible defaults."""
+    description: str = Field(..., min_length=1)
+    deadline: Optional[datetime] = None
+    status: Status = Status.TODO
+    priority: Priority = Priority.LOW
 
-    @classmethod
-    def from_domain_model(cls, task: Task):
-        """Convert domain model to API payload."""
-        return cls(**asdict(task))
-    
-    def to_domain_model(self):
-        """Convert API payload to domain model."""
+    model_config = {"use_enum_values": True}
+
+    def to_domain_model(self) -> Task:
+        """Convert request payload to domain model."""
         return Task(
-            id=self.id,
+            id=None,
             description=self.description,
             deadline=self.deadline,
             status=Status(self.status),
             priority=Priority(self.priority)
         )
+
+
+class TaskResponsePayload(BaseModel):
+    """Schema for task responses - contains all task fields."""
+    id: str
+    description: str
+    deadline: Optional[datetime]
+    status: Status
+    priority: Priority
+
+    model_config = {"use_enum_values": True}
+
+    @classmethod
+    def from_domain_model(cls, task: Task) -> "TaskResponsePayload":
+        """Convert domain model to response payload."""
+        return cls(**asdict(task))
+
+
+# Backwards compatibility - TaskPayload now refers to TaskResponsePayload
+TaskPayload = TaskResponsePayload
 ```
 
 ### Usage
 ```python
-# Handler converting domain → API
+# Handler converting domain → API (response)
 task = service.get_task(task_id)
-return TaskPayload.from_domain_model(task).model_dump(), HTTPStatus.OK
+return TaskResponsePayload.from_domain_model(task).model_dump(), HTTPStatus.OK
 
-# Handler converting API → domain (for create/update)
-payload = TaskPayload.model_validate(request.json)
-task = payload.to_domain_model()
+# Handler converting API → domain (create request)
+data = request.get_json()
+task_request = TaskRequestPayload(**data)
+task = task_request.to_domain_model()
 ```
 
 ### Alternatives Considered
-- **Separate response schemas**: Different classes for request/response
+- **Single payload for both**: Simpler but less explicit about request/response differences
 - **Automatic Pydantic serialization**: Less control over conversion
 - **Manual dict mapping**: Error-prone, verbose
-- **ORM-like mappers**: Additional complexity
 
 ### Rationale
-- **Explicit conversion**: Clear where transformations happen
-- **Type safety**: Leverages Pydantic validation
-- **Single source of truth**: Schema defines both validation and conversion
+- **Explicit separation**: Request and response schemas can evolve independently
+- **Clear contract**: API consumers know exactly what to send and expect
+- **Type safety**: Leverages Pydantic validation in both directions
 - **Enum handling**: Properly reconstructs enum types from JSON values
-- **Symmetric**: Both directions are supported
+- **Backwards compatibility**: `TaskPayload` alias preserves existing code
 
 ### Trade-offs
 - ✅ Clear transformation logic
 - ✅ Validated at each boundary
-- ✅ Enum reconstruction is explicit
+- ✅ Explicit request/response contracts
 - ⚠️ Slight code duplication of field names
 
 ---
@@ -837,9 +853,12 @@ class ISubtaskUnitOfWork(ITaskUnitOfWork):
 ```python
 # api/providers.py
 def get_subtask_uow() -> ISubtaskUnitOfWork:
-    """Factory creates both UoWs and links them."""
-    task_uow = InMemoryTaskUnitOfWork(_db)
-    return InMemorySubtaskUnitOfWork(_db, task_uow)
+    """Factory function to create Subtask Unit of Work instances.
+    
+    Inherits from TaskUnitOfWork, so it has access to all repositories.
+    On commit/rollback, it automatically commits/rollbacks the parent class.
+    """
+    return InMemorySubtaskUnitOfWork(_db)
 ```
 
 ### Trade-offs

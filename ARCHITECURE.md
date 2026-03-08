@@ -290,28 +290,36 @@ src/task_manager/
 │   ├── providers.py        # Dependency injection
 │   ├── schemas.py         # Pydantic request/response schemas
 │   ├── handlers/
-│   │   └── tasks.py       # Request/response transformation
+│   │   ├── __init__.py
+│   │   ├── tasks.py       # Task request/response transformation
+│   │   └── subtasks.py    # Subtask request/response transformation
 │   └── v1/
 │       ├── __init__.py
 │       ├── blueprints.py  # Versioned blueprint registration
 │       └── routes/
-│           └── tasks.py   # URL routing
+│           ├── __init__.py
+│           ├── tasks.py   # Task URL routing
+│           └── subtasks.py # Subtask URL routing
 ├── services/
 │   ├── __init__.py
-│   └── tasks.py           # Business logic
+│   ├── tasks.py           # Task business logic
+│   └── subtasks.py        # Subtask business logic
 ├── domain/
 │   ├── __init__.py
-│   └── models.py          # Domain entities (Task, Status, Priority, History, HistoryType)
+│   ├── models.py          # Domain entities (Task, Subtask, Status, Priority, History, HistoryType)
+│   ├── results.py         # Result monad for explicit error handling
+│   ├── validations.py     # Domain validation functions
+│   └── pipelines.py      # Validation pipeline factories
 ├── data/
 │   ├── __init__.py
 │   ├── repositories/
 │   │   ├── __init__.py
-│   │   ├── interfaces.py  # Repository abstractions (ITaskRepository, IHistoryRepository)
-│   │   └── in_memory.py   # In-memory implementation
+│   │   ├── interfaces.py  # Repository abstractions (ITaskRepository, ISubtaskRepository, IHistoryRepository)
+│   │   └── in_memory.py   # In-memory implementations
 │   └── unit_of_work/
 │       ├── __init__.py
-│       ├── interfaces.py  # UoW abstraction (includes history property)
-│       └── in_memory.py   # In-memory implementation
+│       ├── interfaces.py  # UoW abstractions (ITaskUnitOfWork, ISubtaskUnitOfWork)
+│       └── in_memory.py   # In-memory implementations
 └── infrastructure/
     ├── __init__.py
     └── in_memory.py       # In-memory database
@@ -320,10 +328,14 @@ src/task_manager/
 ### History Feature
 The history tracking feature is integrated throughout all layers:
 
-- **Domain Layer**: `History` model and `HistoryType` enum track all entity changes
-- **Data Layer**: `IHistoryRepository` interface with `get_history()` and `add_history()` methods
-- **Service Layer**: `TaskService._record_history()` helper records changes atomically with each operation
-- **API Layer**: `GET /tasks/history` and `GET /tasks/history/<task_id>` endpoints
+- **Domain Layer**: `History` model and `HistoryType` enum track all entity changes (tasks and subtasks)
+- **Data Layer**: `IHistoryRepository` interface with `get_history()`, `get_history_for_task_subtasks()`, and `get_history_for_subtask()` methods
+- **Service Layer**: `TaskService._record_history()` and `SubtaskService._record_history()` helpers record changes atomically with each operation
+- **API Layer**: 
+  - `GET /tasks/history` - Get all history entries
+  - `GET /tasks/history/<task_id>` - Get history for a specific task
+  - `GET /tasks/<task_id>/subtasks/history` - Get all subtask history for a task
+  - `GET /tasks/<task_id>/subtasks/history/<subtask_id>` - Get history for a specific subtask
 
 ### Unit of Work Variants
 The system has two UoW implementations for different use cases:
@@ -343,6 +355,97 @@ ITaskUnitOfWork (ABC)
 - `ISubtaskUnitOfWork` inherits from `ITaskUnitOfWork`, gaining all properties (tasks, subtasks, history)
 - `InMemorySubtaskUnitOfWork` automatically commits/rollbacks both itself and the associated `ITaskUnitOfWork`
 - Services accept `ITaskUnitOfWork` and can work with either implementation polymorphically
+
+### Functional Programming: Result Monad, Validators, and Pipelines
+The system introduces functional programming concepts for explicit error handling and composable validation in the domain layer.
+
+#### Result Monad (`domain/results.py`)
+A simplified Result type that makes success/failure explicit in the type system:
+
+```python
+class Result(Generic[T]):
+    def __init__(self, value=None, error=None):
+        self._value = value
+        self._error = error
+    
+    @staticmethod
+    def Ok(value: T) -> 'Result[T]':
+        return Result(value=value)
+    
+    @staticmethod
+    def Err(error: str) -> 'Result[T]':
+        return Result(error=error)
+    
+    def is_ok(self) -> bool:
+        return self._error is None
+    
+    def map(self, func: Callable[[T], U]) -> 'Result[U]':
+        """Apply func to value if Ok, keep error otherwise."""
+    
+    def bind(self, func: Callable[[T], 'Result[U]']) -> 'Result[U]':
+        """Chain a function that returns a Result."""
+```
+
+**Benefits:**
+- Explicit error handling in types
+- Functional composition with `map()` and `bind()`
+- No external dependencies
+
+#### Validators (`domain/validations.py`)
+Composable validation functions that check business rules:
+
+```python
+def validate_deadline(deadline: datetime | None) -> Result[datetime | None]:
+    """Check if deadline is not in the past."""
+    
+def validate_status_transition(from_status: Status, to_status: Status) -> Result[Status]:
+    """Validate that a status transition is allowed."""
+    
+def validate_deadline_for_subtask(parent_deadline, subtask_deadline):
+    """Validate subtask deadline does not exceed parent."""
+```
+
+**Benefits:**
+- Pure functions with no side effects
+- Single responsibility - each validator checks one rule
+- Reusable across different operations
+
+#### Pipelines (`domain/pipelines.py`)
+Pre-configured validation chains that define when to run which validators:
+
+```python
+def create_pipeline(validators: List[Callable[[], Result]]) -> Result:
+    """Create a validation pipeline from a list of validator callables."""
+    results = [v() for v in validators]
+    return combine(*results)
+
+# Pre-configured pipelines
+task_create_validation_pipeline = create_pipeline([...])
+task_update_validation_pipeline = create_pipeline([...])
+subtask_create_validation_pipeline = create_pipeline([...])
+```
+
+**Benefits:**
+- Separation of configuration from execution
+- Explicit validation order
+- Easy to add/remove validators
+
+#### Service Layer Integration
+Services call pipelines and handle results:
+
+```python
+# In services/tasks.py
+validation_result = pipelines.task_create_validation_pipeline(task.deadline)
+if validation_result.is_err():
+    raise DomainValidationError([validation_result.error])
+```
+
+**Design Principles:**
+- **Validators tell "what" to check**: Each validation function has single responsibility
+- **Pipelines tell "when" to use them**: Pre-configured pipelines define validation order
+- **Services orchestrate**: Services call pipelines and handle results
+
+See [Design Decisions - Domain Validations: FP and Monad](./DESIGN_DECISONS.md#17-domain-validations-fp-and-monad) for detailed rationale.
 
 ---
 
