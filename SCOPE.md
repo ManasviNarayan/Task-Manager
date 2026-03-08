@@ -158,6 +158,7 @@ The following domain rules are enforced by the system:
 ### Input Validation
 - Description must be non-empty (minimum length of 1 character)
 - All enum fields (Status, Priority) must use valid values only
+- **Deadline must not be in the past**: When creating or updating a task, the deadline (if provided) must be a future date or datetime
 
 ### Status Transition Rules
 The following status transitions are valid:
