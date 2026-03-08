@@ -9,6 +9,59 @@ The scope is intentionally limited to focus on correctness, maintainability, and
 
 ---
 
+## Business Requirements
+
+The Task Manager system must support the following business requirements:
+
+1. **Single-User Task Management**: The system serves a single user and does not require authentication or multi-user support.
+
+2. **Task Lifecycle Management**: Users must be able to create, read, update, delete, and filter tasks throughout their lifecycle.
+
+3. **Subtask Hierarchy**: Tasks can contain multiple subtasks, allowing users to break down complex tasks into manageable units.
+
+4. **Deadline Tracking**: Tasks support optional deadlines for time-sensitive items. The system must automatically detect and mark overdue tasks.
+
+5. **Status Workflow**: The system enforces valid status transitions and supports reopening completed or cancelled tasks.
+
+6. **Priority Handling**: Tasks support priority levels to help users focus on important items.
+
+7. **History Auditability**: All task and subtask state changes must be recorded for audit purposes.
+
+---
+
+## Functional Requirements
+
+### Task Management
+- **Create Task**: Users can create a task with only a description (minimum required field)
+- **Read Task**: Retrieve individual tasks or list all tasks
+- **Update Task**: Modify task properties (description, deadline, status, priority)
+- **Delete Task**: Remove a task and its associated subtasks
+- **Filter Tasks**: Query tasks by various criteria
+
+### Subtask Management
+- **Create Subtask**: Add subtasks to an existing task
+- **Read Subtask**: Retrieve subtasks for a specific task
+- **Update Subtask**: Modify subtask properties
+- **Delete Subtask**: Remove a subtask from a task
+- **Cascade Status**: When a task transitions to DONE or CANCELLED, all its subtasks receive the same status
+
+### Status Management
+- Supported statuses: TODO, IN_PROGRESS, DONE, CANCELLED, OVERDUE
+- Status transitions must follow defined rules
+- Tasks automatically transition to OVERDUE when deadlines are exceeded
+
+### Priority Management
+- Supported priorities: LOW (1), MEDIUM (2), HIGH (3), CRITICAL (4)
+- Default priority is LOW (value: 1) when not specified
+- Integer values allow for easy filtering and natural ordering
+
+### History Tracking
+- All state changes are recorded with timestamp
+- History entries include entity identifier, change type, previous and new values
+- History persistence is atomic with the corresponding operation
+
+---
+
 ## In Scope
 
 ### Core Features
@@ -16,15 +69,29 @@ The scope is intentionally limited to focus on correctness, maintainability, and
 #### Task Management
 - Create, update, retrieve, and filter tasks
 - Tasks contain:
-  - description
-  - deadline
-  - status
-  - priority
+  - description (required)
+  - deadline (optional - can be blank for general tasks)
+  - status (defaults to TODO)
+  - priority (defaults to LOW)
   - subtasks
+
+#### Task Creation
+- Users can create a task with minimal information
+- Only **description** is required to create a task
+- Optional fields with defaults:
+  - **deadline**: If not provided, the task is a general task with no specific due date
+  - **status**: Defaults to `TODO` if not specified
+  - **priority**: Defaults to `LOW` if not specified
+- Task ID is auto-generated if not provided
 
 #### Subtask Management
 - Create and update subtasks associated with a task
 - Subtasks cannot exist independently of a task
+- Each subtask contains:
+  - description (required)
+  - deadline (optional - must not exceed parent task deadline)
+  - status (defaults to TODO)
+- **Note**: Subtasks do NOT have a priority field
 
 #### Status Management
 - Supported task and subtask statuses:
@@ -39,10 +106,11 @@ The scope is intentionally limited to focus on correctness, maintainability, and
 
 #### Priority Management
 - Supported priorities:
-  - `LOW`
-  - `MEDIUM`
-  - `HIGH`
-  - `CRITICAL`
+  - `LOW` (value: 1)
+  - `MEDIUM` (value: 2)
+  - `HIGH` (value: 3)
+  - `CRITICAL` (value: 4)
+- Integer values allow for easy filtering and natural ordering (1 < 2 < 3 < 4)
 
 #### History Tracking
 - All task and subtask state changes are recorded
@@ -75,14 +143,52 @@ The scope is intentionally limited to focus on correctness, maintainability, and
   - response serialization
   - error mapping
 - Business logic is not implemented in the API layer
+- Separate request and response schemas for create and fetch operations
 
 ---
 
-## Validation and Error Handling
+## Domain-Level Validations
 
-- Input and domain validations are performed using composable validation functions
-- Validation failures are handled consistently and surfaced via API responses
-- Application errors are separated from infrastructure-level errors
+The following domain rules are enforced by the system:
+
+### Input Validation
+- Description must be non-empty (minimum length of 1 character)
+- All enum fields (Status, Priority) must use valid values only
+
+### Status Transition Rules
+The following status transitions are valid:
+
+| From Status | Allowed To Status |
+|-------------|-------------------|
+| TODO        | IN_PROGRESS, CANCELLED |
+| IN_PROGRESS | TODO, DONE, CANCELLED |
+| DONE        | IN_PROGRESS (reopen) |
+| CANCELLED   | TODO (reopen) |
+| OVERDUE     | IN_PROGRESS, CANCELLED |
+
+### Business Rule Validations
+- **Subtask Deadline Constraint**: A subtask's deadline cannot exceed its parent task's deadline
+- **Task Completion Constraint**: A task cannot be marked as DONE if any of its subtasks are still in TODO status
+- **ID Uniqueness**: Task IDs must be unique across the system
+
+### Automatic Status Updates
+- Tasks are automatically marked as OVERDUE when the current date exceeds the deadline
+
+---
+
+## Background Processing
+
+The system includes background jobs for the following:
+
+### Overdue Task Detection
+- A background process periodically checks all tasks with deadlines
+- Tasks that have exceeded their deadline are automatically transitioned to OVERDUE status
+- This process runs at regular intervals to ensure timely status updates
+
+### Today Task Reminders
+- A background process identifies tasks due today or overdue
+- These tasks are flagged or exposed via API for reminder purposes
+- This helps users focus on time-sensitive items
 
 ---
 
@@ -109,7 +215,6 @@ The following features are explicitly excluded:
 - User authentication or authorization
 - Multi-user support
 - Frontend or UI
-- Background jobs or schedulers
 - Distributed systems or messaging
 - CQRS, Event Sourcing, Saga patterns
 - Caching layers
@@ -141,3 +246,4 @@ The following may be explored in later iterations:
 - Read-only query optimization
 - Alternative persistence implementations
 - Frontend or CLI integration
+

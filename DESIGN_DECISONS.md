@@ -16,6 +16,9 @@ This document captures key architectural and design decisions made during the de
 9. [Single vs Multiple Payloads](#9-single-vs-multiple-payloads)
 10. [Validation Strategy](#10-validation-strategy)
 11. [What Was Explicitly Excluded](#11-what-was-explicitly-excluded)
+12. [Provider Pattern & Dependency Injection](#12-provider-pattern--dependency-injection)
+13. [Schema Bidirectional Conversion](#13-schema-bidirectional-conversion)
+14. [Context Manager for Unit of Work](#14-context-manager-for-unit-of-work)
 
 ---
 
@@ -503,6 +506,229 @@ These exclusions enable deeper focus on fundamental architectural patterns witho
 
 ---
 
+## 12. Provider Pattern & Dependency Injection
+
+### Decision
+Use a centralized provider module to handle dependency creation and wiring, with factory functions that return Unit of Work instances.
+
+### Implementation
+```python
+# api/providers.py
+from task_manager.infrastructure.in_memory import InMemoryDB
+from task_manager.data.unit_of_work.in_memory import InMemoryTaskUnitOfWork
+from task_manager.data.unit_of_work.interfaces import ITaskUnitOfWork
+
+_db = InMemoryDB()  # shared in-memory "session"
+
+def get_task_list_uow() -> ITaskUnitOfWork:
+    """Factory function to create Unit of Work instances.
+    
+    This allows for proper dependency injection while maintaining
+    the factory pattern for creating new instances per request.
+    """
+    return InMemoryTaskUnitOfWork(_db)
+```
+
+### Usage in Handlers
+```python
+# api/handlers/tasks.py
+def get_tasks() -> tuple[list[dict], int]:
+    with get_task_list_uow() as uow:
+        service = TaskService(uow)
+        tasks = [TaskPayload.from_domain_model(task).model_dump() 
+                 for task in service.get_tasks()]
+        logger.info(f"Retrieved {len(tasks)} tasks")
+    return tasks, HTTPStatus.OK
+```
+
+### Alternatives Considered
+- **Direct instantiation in handlers**: Couples handlers to concrete implementations
+- **Global service instances**: Not thread-safe, prevents proper isolation
+- **Dependency injection frameworks** (e.g., punq, injector): Additional dependencies
+- **Service locator pattern**: Implicit dependencies, harder to test
+
+### Rationale
+- **Explicit dependencies**: Factory functions make dependencies visible
+- **Testability**: Can swap providers for mock implementations
+- **Single responsibility**: Providers handle dependency creation, handlers handle HTTP
+- **Flexibility**: Easy to change storage implementation (in-memory → database)
+- **Context manager integration**: Works seamlessly with Unit of Work context managers
+
+### Trade-offs
+- ✅ Clear dependency flow
+- ✅ Easy to test with mocks
+- ✅ No external dependencies
+- ⚠️ Manual provider management (vs. DI framework)
+
+---
+
+## 13. Schema Bidirectional Conversion
+
+### Decision
+Implement bidirectional conversion methods in Pydantic schemas to transform between domain models and API payloads.
+
+### Implementation
+```python
+# api/schemas.py
+class TaskPayload(BaseModel):
+    id : str | None
+    description : str
+    deadline: datetime
+    status: Status
+    priority : Priority
+
+    model_config = {
+        "use_enum_values": True
+    }
+
+    @classmethod
+    def from_domain_model(cls, task: Task):
+        """Convert domain model to API payload."""
+        return cls(**asdict(task))
+    
+    def to_domain_model(self):
+        """Convert API payload to domain model."""
+        return Task(
+            id=self.id,
+            description=self.description,
+            deadline=self.deadline,
+            status=Status(self.status),
+            priority=Priority(self.priority)
+        )
+```
+
+### Usage
+```python
+# Handler converting domain → API
+task = service.get_task(task_id)
+return TaskPayload.from_domain_model(task).model_dump(), HTTPStatus.OK
+
+# Handler converting API → domain (for create/update)
+payload = TaskPayload.model_validate(request.json)
+task = payload.to_domain_model()
+```
+
+### Alternatives Considered
+- **Separate response schemas**: Different classes for request/response
+- **Automatic Pydantic serialization**: Less control over conversion
+- **Manual dict mapping**: Error-prone, verbose
+- **ORM-like mappers**: Additional complexity
+
+### Rationale
+- **Explicit conversion**: Clear where transformations happen
+- **Type safety**: Leverages Pydantic validation
+- **Single source of truth**: Schema defines both validation and conversion
+- **Enum handling**: Properly reconstructs enum types from JSON values
+- **Symmetric**: Both directions are supported
+
+### Trade-offs
+- ✅ Clear transformation logic
+- ✅ Validated at each boundary
+- ✅ Enum reconstruction is explicit
+- ⚠️ Slight code duplication of field names
+
+---
+
+## 14. Context Manager for Unit of Work
+
+### Decision
+Implement `__enter__` and `__exit__` methods on Unit of Work to enable Python's `with` statement for automatic transaction management.
+
+### Implementation
+```python
+# data/unit_of_work/interfaces.py
+class ITaskUnitOfWork(ABC):
+    @property
+    @abstractmethod
+    def tasks(self) -> ITaskRepository:
+        pass
+
+    @abstractmethod
+    def __enter__(self) -> Self:
+        pass
+
+    @abstractmethod
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        pass
+
+    @abstractmethod
+    def commit(self):
+        pass
+
+    @abstractmethod
+    def rollback(self):
+        pass
+```
+
+```python
+# data/unit_of_work/in_memory.py
+class InMemoryTaskUnitOfWork(ITaskUnitOfWork):
+    def __init__(self, db):
+        self._db = db
+        self._tasks = InMemoryTaskRepository(db)
+
+    @property
+    def tasks(self) -> InMemoryTaskRepository:
+        return self._tasks
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        if exc_type is not None:
+            self.rollback()
+            logger.error("Transaction rolled back due to exception: %s", exc_val)
+        else:
+            self.commit()
+        return None
+```
+
+### Handler Usage
+```python
+def get_tasks() -> tuple[list[dict], int]:
+    with get_task_list_uow() as uow:  # __enter__ called here
+        service = TaskService(uow)
+        tasks = service.get_tasks()
+        # ... process tasks
+    # __exit__ called here - commits on success, rolls back on exception
+    return tasks, HTTPStatus.OK
+```
+
+### Alternatives Considered
+- **Manual commit/rollback**: Error-prone, easy to forget
+- **Decorator pattern**: More complex, less Pythonic
+- **Service-level transaction**: Couples services to transaction logic
+- **No transaction management**: Not suitable for database implementations
+
+### Rationale
+- **Pythonic**: Uses native context manager protocol
+- **Automatic cleanup**: Ensures commit/rollback even on exceptions
+- **Resource safety**: Prevents resource leaks
+- **Future-proof**: Works naturally with database transactions
+- **Clean handler code**: Separates transaction lifecycle from business logic
+
+### Error Handling Flow
+```
+1. Handler enters 'with' block → __enter__ returns UoW
+2. Service executes business logic
+3. If no exception:
+   - __exit__ is called with (None, None, None)
+   - commit() is executed
+4. If exception occurs:
+   - __exit__ is called with exception info
+   - rollback() is executed
+   - Exception propagates to Flask error handler
+```
+
+### Trade-offs
+- ✅ Automatic transaction management
+- ✅ Pythonic and readable
+- ✅ Ensures cleanup in all cases
+- ⚠️ In-memory implementation is no-op (as expected)
+- ⚠️ Requires understanding of context manager protocol
+
+---
+
 ## Design Evolution
 
 ### Key Iterations
@@ -521,3 +747,9 @@ These exclusions enable deeper focus on fundamental architectural patterns witho
 - Changed `__dict__` to `asdict()` for proper dataclass serialization
 - Renamed `TaskModel` → `Task`, `TaskSchema` → `TaskPayload` for clarity
 - Modified repository to return domain objects instead of dicts
+
+**Iteration 4: Dependency Injection & Context Management**
+- Added provider pattern for dependency creation (`api/providers.py`)
+- Implemented context manager protocol (`__enter__`/`__exit__`) on Unit of Work
+- Added bidirectional schema conversion methods (`from_domain_model`/`to_domain_model`)
+- Integrated context managers in handlers for automatic transaction management

@@ -2,12 +2,13 @@
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 class Priority(Enum):
-    LOW = 'Low'
-    MEDIUM = 'Medium'
-    HIGH = 'High'
-    CRITICAL = 'Critical'
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
 
 class Status(Enum):
     TODO = 'Todo'
@@ -18,11 +19,9 @@ class Status(Enum):
     
 @dataclass
 class Task:
-    id : str | None
-    description : str
-    deadline: datetime
+    id: Optional[str]
+    description: str
+    deadline: Optional[datetime]  # Optional - None represents a general task with no deadline
     status: Status
-    priority : Priority
-
-
+    priority: Priority
 
