@@ -12,7 +12,6 @@ from dataclasses import asdict
 
 from task_manager.data.unit_of_work.interfaces import (
     ISubtaskUnitOfWork,
-    ITaskUnitOfWork,
 )
 from task_manager.domain.models import History, HistoryType, Subtask
 from task_manager.domain import pipelines
@@ -39,20 +38,17 @@ class SubtaskService:
 
     def __init__(
         self,
-        subtask_uow: ITaskUnitOfWork,
-        task_uow: ITaskUnitOfWork | None = None,
+        subtask_uow: ISubtaskUnitOfWork,
     ) -> None:
         """
-        Initialize the SubtaskService with Unit of Work instances.
+        Initialize the SubtaskService with Unit of Work instance.
 
         Args:
             subtask_uow: Unit of Work for subtask data access operations.
-            task_uow: Optional Unit of Work for task data access operations.
-                      Required for parent task validation and cross-UoW
-                      history recording.
+                         Inherits from ITaskUnitOfWork, so provides access
+                         to tasks, subtasks, and history repositories.
         """
         self.subtask_uow = subtask_uow
-        self.task_uow = task_uow
 
     def _record_history(
         self,
@@ -103,12 +99,6 @@ class SubtaskService:
             old_subtask_count: Number of subtasks before the change.
             new_subtask_count: Number of subtasks after the change.
         """
-        if self.task_uow is None:
-            logger.warning(
-                "Task UoW not provided, skipping task-side history recording"
-            )
-            return
-
         history_entry = History(
             id=str(uuid.uuid4()),
             entity_id=task_id,
@@ -118,7 +108,7 @@ class SubtaskService:
             old_value=f"{old_subtask_count} subtasks",
             new_value=f"{new_subtask_count} subtasks",
         )
-        self.task_uow.history.add_history(history_entry)
+        self.subtask_uow.history.add_history(history_entry)
 
     def get_subtasks(self, task_id: str) -> list[Subtask]:
         """
@@ -131,15 +121,11 @@ class SubtaskService:
             List of all Subtask objects for the given task.
 
         Raises:
-            DomainError: If task UoW is not provided.
             NotFoundError: If the parent task is not found.
             DomainError: If an unexpected error occurs.
         """
         try:
-            if self.task_uow is None:
-                raise DomainError("Task UoW required to verify parent task exists")
-
-            task = self.task_uow.tasks.get_task(task_id)
+            task = self.subtask_uow.tasks.get_task(task_id)
             if not task:
                 logger.warning(
                     "Task with id %s not found in repository", task_id
@@ -230,17 +216,13 @@ class SubtaskService:
             The created subtask with generated ID.
 
         Raises:
-            DomainError: If task UoW is not provided.
             NotFoundError: If the parent task is not found.
             DomainValidationError: If validation fails.
             ValidationError: If a business rule is violated.
             DomainError: If an unexpected error occurs.
         """
         try:
-            if self.task_uow is None:
-                raise DomainError("Task UoW required to verify parent task exists")
-
-            task = self.task_uow.tasks.get_task(task_id)
+            task = self.subtask_uow.tasks.get_task(task_id)
             if not task:
                 logger.warning(
                     "Task with id %s not found for subtask creation", task_id
@@ -333,10 +315,7 @@ class SubtaskService:
 
             task_id = existing_subtask.task_id
 
-            if self.task_uow is None:
-                raise DomainError("Task UoW required to validate subtask updates")
-
-            parent_task = self.task_uow.tasks.get_task(task_id)
+            parent_task = self.subtask_uow.tasks.get_task(task_id)
             if not parent_task:
                 raise NotFoundError(f"Parent task with id {task_id} not found")
 
@@ -408,15 +387,11 @@ class SubtaskService:
             List of History entries for the task's subtasks.
 
         Raises:
-            DomainError: If task UoW is not provided.
             NotFoundError: If the parent task is not found.
             DomainError: If an unexpected error occurs.
         """
         try:
-            if self.task_uow is None:
-                raise DomainError("Task UoW required to verify parent task exists")
-
-            task = self.task_uow.tasks.get_task(task_id)
+            task = self.subtask_uow.tasks.get_task(task_id)
             if not task:
                 logger.warning(
                     "Task with id %s not found in repository", task_id

@@ -120,7 +120,7 @@ class InMemoryTaskUnitOfWork(ITaskUnitOfWork):
             raise DatabaseError("Rollback failed in in-memory UoW") from e
 
 
-class InMemorySubtaskUnitOfWork(InMemoryTaskUnitOfWork):
+class InMemorySubtaskUnitOfWork(InMemoryTaskUnitOfWork, ISubtaskUnitOfWork):
     """
     In-memory Unit of Work for subtask operations.
     

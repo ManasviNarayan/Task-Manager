@@ -10,7 +10,7 @@ from http import HTTPStatus
 
 from flask import request
 
-from task_manager.api.providers import get_subtask_uow, get_task_list_uow
+from task_manager.api.providers import get_subtask_uow
 from task_manager.api.schemas import (
     HistoryResponsePayload,
     SubtaskRequestPayload,
@@ -33,8 +33,8 @@ def get_subtasks(task_id: str) -> tuple[list[dict], int]:
     Returns:
         Tuple of (list of subtask dictionaries, HTTP status code).
     """
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
 
         subtasks = [
             SubtaskResponsePayload.from_domain_model(st).model_dump()
@@ -57,8 +57,8 @@ def get_subtask(task_id: str, subtask_id: str) -> tuple[dict, int]:
     Returns:
         Tuple of (subtask dictionary, HTTP status code).
     """
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
 
         subtask = service.get_subtask(subtask_id)
         logger.info(f"Retrieved subtask with id {subtask_id}")
@@ -83,8 +83,8 @@ def create_subtask(task_id: str) -> tuple[dict, int]:
     subtask_request = SubtaskRequestPayload(**data)
     subtask = subtask_request.to_domain_model(task_id)
 
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
         created_subtask = service.create_subtask(task_id, subtask)
 
         logger.info(
@@ -110,8 +110,8 @@ def update_subtask(task_id: str, subtask_id: str) -> tuple[dict, int]:
     data = request.get_json()
     update_request = UpdateSubtaskRequestPayload(**data)
 
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
 
         existing_subtask = service.get_subtask(subtask_id)
         updated_subtask_model = update_request.to_domain_model(existing_subtask)
@@ -137,8 +137,8 @@ def delete_subtask(task_id: str, subtask_id: str) -> tuple[dict, int]:
     Returns:
         Tuple of (success message dictionary, HTTP status code).
     """
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
 
         service.delete_subtask(subtask_id)
 
@@ -159,8 +159,8 @@ def get_subtasks_history(task_id: str) -> tuple[list[dict], int]:
     Returns:
         Tuple of (list of history dictionaries, HTTP status code).
     """
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
 
         history = service.get_subtasks_history(task_id)
 
@@ -188,8 +188,8 @@ def get_subtask_history(task_id: str, subtask_id: str) -> tuple[list[dict], int]
     Returns:
         Tuple of (list of history dictionaries, HTTP status code).
     """
-    with get_task_list_uow() as task_uow, get_subtask_uow() as subtask_uow:
-        service = SubtaskService(subtask_uow, task_uow)
+    with get_subtask_uow() as subtask_uow:
+        service = SubtaskService(subtask_uow)
 
         history = service.get_subtask_history(subtask_id)
 

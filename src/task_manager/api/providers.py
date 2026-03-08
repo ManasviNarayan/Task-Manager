@@ -31,7 +31,7 @@ def get_task_list_uow() -> ITaskUnitOfWork:
     return InMemoryTaskUnitOfWork(_db)
 
 
-def get_subtask_uow() -> ITaskUnitOfWork:
+def get_subtask_uow() -> ISubtaskUnitOfWork:
     """
     Factory function to create Subtask Unit of Work instances.
 

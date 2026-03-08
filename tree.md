@@ -41,4 +41,4 @@
 └── infrastructure/
     ├── __init__.py
     └── in_memory.py       # In-memory database
-    ```
+```
