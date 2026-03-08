@@ -1,6 +1,6 @@
 # task_manager/data//in_memory/task_uow.py
 
-from task_manager.data.repositories.in_memory import InMemoryTaskRepository
+from task_manager.data.repositories.in_memory import InMemoryTaskRepository, InMemoryHistoryRepository
 from task_manager.data.unit_of_work.interfaces import ITaskUnitOfWork
 from task_manager.logger import get_logger
 from task_manager.exceptions import DatabaseError
@@ -12,10 +12,15 @@ class InMemoryTaskUnitOfWork(ITaskUnitOfWork):
     def __init__(self, db):
         self._db = db
         self._tasks = InMemoryTaskRepository(db)
+        self._history = InMemoryHistoryRepository(db)
 
     @property
     def tasks(self)-> InMemoryTaskRepository:
         return self._tasks
+
+    @property
+    def history(self) -> InMemoryHistoryRepository:
+        return self._history
 
     def __enter__(self):
         return self

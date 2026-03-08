@@ -1,5 +1,5 @@
 # task_manager/api/v1/routes/tasks.py
-from task_manager.api.handlers.tasks import get_tasks, get_task, create_task, update_task, delete_task
+from task_manager.api.handlers.tasks import get_tasks, get_task, create_task, update_task, delete_task, get_history
 from flask import Blueprint
 
 
@@ -37,4 +37,18 @@ def register_task_routes(bp: Blueprint):
         endpoint='delete_task',
         view_func=delete_task,
         methods = ['DELETE']
+    )
+    
+    bp.add_url_rule(
+        '/tasks/history',
+        endpoint='get_history',
+        view_func=get_history,
+        methods = ['GET']
+    )
+    
+    bp.add_url_rule(
+        '/tasks/history/<task_id>',
+        endpoint='get_task_history',
+        view_func=get_history,
+        methods = ['GET']
     )

@@ -1,8 +1,41 @@
 # task_manager/infrastructure/in_memory/db.py
 from datetime import datetime, timedelta
-from task_manager.domain.models import Status, Priority
+from task_manager.domain.models import Status, Priority, HistoryType
+import uuid
+
 now = datetime.now()
 t = now + timedelta(days=1)
+
+# Sample history entries for testing
+sample_history = [
+    {
+        "id": str(uuid.uuid4()),
+        "entity_id": "task-001",
+        "entity_type": "task",
+        "change_type": HistoryType.TASK_CREATED,
+        "timestamp": now - timedelta(hours=2),
+        "old_value": None,
+        "new_value": '{"id": "task-001", "description": "Write initial project scope", "deadline": null, "status": "Todo", "priority": 3}'
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "entity_id": "task-001",
+        "entity_type": "task",
+        "change_type": HistoryType.TASK_UPDATED,
+        "timestamp": now - timedelta(hours=1),
+        "old_value": '{"status": "Todo"}',
+        "new_value": '{"status": "In Progress"}'
+    },
+    {
+        "id": str(uuid.uuid4()),
+        "entity_id": "task-002",
+        "entity_type": "task",
+        "change_type": HistoryType.TASK_CREATED,
+        "timestamp": now - timedelta(hours=3),
+        "old_value": None,
+        "new_value": '{"id": "task-002", "description": "Implement in-memory task repository", "deadline": null, "status": "Todo", "priority": 4}'
+    }
+]
 
 class InMemoryDB:
     """Simple in-memory storage for tasks, subtasks, and history."""
@@ -36,4 +69,4 @@ class InMemoryDB:
         "priority": Priority.LOW,
     },]
         self.subtasks = []
-        self.history = []
+        self.history = sample_history
