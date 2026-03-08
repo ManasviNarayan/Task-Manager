@@ -301,21 +301,29 @@ src/task_manager/
 │   └── tasks.py           # Business logic
 ├── domain/
 │   ├── __init__.py
-│   └── models.py          # Domain entities (Task, Status, Priority)
+│   └── models.py          # Domain entities (Task, Status, Priority, History, HistoryType)
 ├── data/
 │   ├── __init__.py
 │   ├── repositories/
 │   │   ├── __init__.py
-│   │   ├── interfaces.py  # Repository abstractions
+│   │   ├── interfaces.py  # Repository abstractions (ITaskRepository, IHistoryRepository)
 │   │   └── in_memory.py   # In-memory implementation
 │   └── unit_of_work/
 │       ├── __init__.py
-│       ├── interfaces.py  # UoW abstraction
+│       ├── interfaces.py  # UoW abstraction (includes history property)
 │       └── in_memory.py   # In-memory implementation
 └── infrastructure/
     ├── __init__.py
     └── in_memory.py       # In-memory database
 ```
+
+### History Feature
+The history tracking feature is integrated throughout all layers:
+
+- **Domain Layer**: `History` model and `HistoryType` enum track all entity changes
+- **Data Layer**: `IHistoryRepository` interface with `get_history()` and `add_history()` methods
+- **Service Layer**: `TaskService._record_history()` helper records changes atomically with each operation
+- **API Layer**: `GET /tasks/history` and `GET /tasks/history/<task_id>` endpoints
 
 ---
 

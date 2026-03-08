@@ -115,10 +115,14 @@ The Task Manager system must support the following business requirements:
 #### History Tracking
 - All task and subtask state changes are recorded
 - History entries include:
-  - timestamp
-  - entity identifier
-  - change type
-  - previous and new values
+  - id: Unique identifier for the history entry
+  - entity_id: ID of the task or subtask that was changed
+  - entity_type: Type of entity ("task" or "subtask")
+  - change_type: What happened (created, updated, deleted)
+  - timestamp: When the change occurred
+  - old_value: Previous state (JSON serialized)
+  - new_value: New state (JSON serialized)
+- History can be queried for all entities or filtered by specific task/subtask
 - History persistence is atomic with the corresponding operation
 
 ---
