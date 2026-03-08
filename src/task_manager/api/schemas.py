@@ -69,3 +69,32 @@ class TaskResponsePayload(BaseModel):
 # This allows existing code using TaskPayload to continue working
 TaskPayload = TaskResponsePayload
 
+
+class UpdateTaskRequestPayload(BaseModel):
+    """Schema for updating an existing task.
+    
+    All fields are optional to allow partial updates:
+    - description: Task description (can be updated)
+    - deadline: Due date (can be updated, set to None to remove deadline)
+    - status: Current status (can be updated)
+    - priority: Priority level (can be updated)
+    """
+    description: Optional[str] = Field(None, min_length=1)
+    deadline: Optional[datetime] = None
+    status: Optional[Status] = None
+    priority: Optional[Priority] = None
+
+    model_config = {
+        "use_enum_values": True
+    }
+
+    def to_domain_model(self, existing_task: Task) -> Task:
+        """Convert request payload to domain model, preserving existing values for None fields."""
+        return Task(
+            id=existing_task.id,
+            description=self.description if self.description is not None else existing_task.description,
+            deadline=self.deadline if self.deadline is not None else existing_task.deadline,
+            status=Status(self.status) if self.status is not None else existing_task.status,
+            priority=Priority(self.priority) if self.priority is not None else existing_task.priority
+        )
+

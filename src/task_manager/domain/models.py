@@ -5,10 +5,10 @@ from enum import Enum
 from typing import Optional
 
 class Priority(Enum):
-    LOW = 'Low'
-    MEDIUM = 'Medium'
-    HIGH = 'High'
-    CRITICAL = 'Critical'
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
 
 class Status(Enum):
     TODO = 'Todo'

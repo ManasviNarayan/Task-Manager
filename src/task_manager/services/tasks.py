@@ -74,3 +74,52 @@ class TaskService:
         except Exception as e:
             logger.exception("Unexpected error in TaskService.create_task")
             raise DomainError("Service failed to create task") from e
+
+    def update_task(self, task_id: str, task: Task) -> Task:
+        try:
+            # Check if task exists
+            existing_task = self.task_uow.tasks.get_task(task_id)
+            if not existing_task:
+                logger.warning("Task with id %s not found for update", task_id)
+                raise NotFoundError(f"Task with id {task_id} not found")
+            
+            # Update the task with the provided ID
+            task.id = task_id
+            updated_task = self.task_uow.tasks.update_task(task)
+            logger.info("Updated task with id %s", task_id)
+            return updated_task
+
+        except NotFoundError:
+            raise
+
+        except DatabaseError as e:
+            logger.error("Database error in update_task: %s", str(e))
+            raise
+
+        except Exception as e:
+            logger.exception("Unexpected error in TaskService.update_task")
+            raise DomainError("Service failed to update task") from e
+
+    def delete_task(self, task_id: str) -> bool:
+        try:
+            # Check if task exists
+            existing_task = self.task_uow.tasks.get_task(task_id)
+            if not existing_task:
+                logger.warning("Task with id %s not found for deletion", task_id)
+                raise NotFoundError(f"Task with id {task_id} not found")
+            
+            # Delete the task
+            result = self.task_uow.tasks.delete_task(task_id)
+            logger.info("Deleted task with id %s", task_id)
+            return result
+
+        except NotFoundError:
+            raise
+
+        except DatabaseError as e:
+            logger.error("Database error in delete_task: %s", str(e))
+            raise
+
+        except Exception as e:
+            logger.exception("Unexpected error in TaskService.delete_task")
+            raise DomainError("Service failed to delete task") from e

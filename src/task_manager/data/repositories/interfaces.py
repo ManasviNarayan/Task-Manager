@@ -16,3 +16,11 @@ class ITaskRepository(ABC):
     def add_task(self, task: Task)-> Task:
         pass
 
+    @abstractmethod
+    def update_task(self, task: Task) -> Task | None:
+        pass
+
+    @abstractmethod
+    def delete_task(self, task_id: str) -> bool:
+        pass
+
