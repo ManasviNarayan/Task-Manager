@@ -383,40 +383,73 @@ class InMemoryDB:
 ## 9. Single vs Multiple Payloads
 
 ### Decision
-Use a single `TaskPayload` for both create and fetch operations.
+Use separate payloads for create, update, and response operations (`TaskRequestPayload`, `TaskResponsePayload`, `UpdateTaskRequestPayload`, etc.).
 
 ```python
-class TaskPayload(BaseModel):
-    id: str | None  # None for create requests, str for fetch responses
+# Create request - only description is required, ID is generated
+class TaskRequestPayload(BaseModel):
+    description: str = Field(..., min_length=1)
+    deadline: Optional[datetime] = None
+    status: Status = Status.TODO
+    priority: Priority = Priority.LOW
+
+    def to_domain_model(self) -> Task:
+        return Task(
+            id=None,
+            description=self.description,
+            deadline=self.deadline,
+            status=Status(self.status),
+            priority=Priority(self.priority)
+        )
+
+
+# Response - includes the generated ID and all fields
+class TaskResponsePayload(BaseModel):
+    id: str
     description: str
-    deadline: datetime
+    deadline: Optional[datetime]
     status: Status
     priority: Priority
+
+    @classmethod
+    def from_domain_model(cls, task: Task) -> "TaskResponsePayload":
+        return cls(**asdict(task))
+
+
+# Update request - all fields optional for partial updates
+class UpdateTaskRequestPayload(BaseModel):
+    description: Optional[str] = Field(None, min_length=1)
+    deadline: Optional[datetime] = None
+    status: Optional[Status] = None
+    priority: Optional[Priority] = None
+
+    def to_domain_model(self, existing_task: Task) -> Task:
+        return Task(
+            id=existing_task.id,
+            description=self.description if self.description is not None else existing_task.description,
+            deadline=self.deadline if self.deadline is not None else existing_task.deadline,
+            status=Status(self.status) if self.status is not None else existing_task.status,
+            priority=Priority(self.priority) if self.priority is not None else existing_task.priority
+        )
 ```
 
 ### Alternatives Considered
-- **Separate payloads**: `TaskCreatePayload` (no ID) and `TaskResponsePayload` (with ID)
+- **Single payload**: `TaskPayload` (no ID for create, with ID for response)
 - **Inheritance**: `TaskBase` with `TaskCreate` and `TaskResponse` subclasses
-- **Different schemas per endpoint**: Maximum flexibility
 
 ### Rationale
-- **Minimal difference**: Only the ID field differs between create and fetch
-- **YAGNI**: Can split later if payloads diverge significantly
-- **Reduced duplication**: Avoids maintaining nearly identical classes
-- **Simplicity**: Easier to understand and maintain
+- **Clear intent**: Each payload has a specific purpose (create, update, response)
+- **Validation isolation**: Create and update have different validation rules
+- **Type safety**: Request and response schemas can evolve independently
+- **Partial updates**: Update payloads allow optional fields for PATCH-like behavior
+- **Enum handling**: Properly reconstructs enum types from JSON values
+- **Backwards compatibility**: `TaskPayload` alias preserves existing code
 
-### When to Split
-Consider splitting if:
-- Create requires fields not in response (e.g., passwords)
-- Response has computed/derived fields (e.g., `is_overdue`)
-- Validation rules differ significantly
-- Nested objects appear in one but not the other
-
-### Trade-offs
-- ✅ Less code and duplication
-- ✅ Simpler to maintain
-- ✅ Easy to refactor when needed
-- ⚠️ ID field semantics are implicit
+### When to Consider Single Payload
+A single payload might be better if:
+- Create and response are nearly identical (only ID differs)
+- You want to minimize class count
+- Validation rules are the same for create and update
 
 ---
 
