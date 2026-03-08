@@ -36,7 +36,6 @@ The Task Manager system must support the following business requirements:
 - **Read Task**: Retrieve individual tasks or list all tasks
 - **Update Task**: Modify task properties (description, deadline, status, priority)
 - **Delete Task**: Remove a task and its associated subtasks
-- **Filter Tasks**: Query tasks by various criteria
 
 ### Subtask Management
 - **Create Subtask**: Add subtasks to an existing task
@@ -181,19 +180,8 @@ The following status transitions are valid:
 
 ---
 
-## Background Processing
-
-The system includes background jobs for the following:
-
-### Overdue Task Detection
-- A background process periodically checks all tasks with deadlines
-- Tasks that have exceeded their deadline are automatically transitioned to OVERDUE status
-- This process runs at regular intervals to ensure timely status updates
-
-### Today Task Reminders
-- A background process identifies tasks due today or overdue
-- These tasks are flagged or exposed via API for reminder purposes
-- This helps users focus on time-sensitive items
+### Status Cascade to Subtasks
+When a task transitions to DONE or CANCELLED, all its subtasks receive the same status automatically.
 
 ---
 
@@ -247,7 +235,9 @@ The following features are explicitly excluded:
 ## Future Considerations
 
 The following may be explored in later iterations:
-- Background reminders
+- Background overdue detection
+- Background today task reminders
+- Task filtering by various criteria
 - Read-only query optimization
 - Alternative persistence implementations
 - Frontend or CLI integration

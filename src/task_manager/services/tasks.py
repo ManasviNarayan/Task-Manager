@@ -1,6 +1,6 @@
 # task_manager/services/tasks.py
 from task_manager.data.unit_of_work.interfaces import ITaskUnitOfWork
-from task_manager.domain.models import Task, History, HistoryType
+from task_manager.domain.models import Task, Subtask, History, HistoryType, Status
 from task_manager.domain import pipelines
 from task_manager.exceptions import DatabaseError, DomainError, NotFoundError, ValidationError, DomainValidationError
 from task_manager.logger import get_logger
@@ -176,6 +176,14 @@ class TaskService:
                 new_value=str(new_value)
             )
             
+            # Cascade status to subtasks if task status is DONE or CANCELLED
+            if new_status is not None and new_status != existing_task.status:
+                if new_status in (Status.DONE, Status.CANCELLED):
+                    self._cascade_status_to_subtasks(
+                        task_id=task_id,
+                        new_status=new_status
+                    )
+            
             logger.info("Updated task with id %s", task_id)
             return updated_task
 
@@ -189,6 +197,35 @@ class TaskService:
         except Exception as e:
             logger.exception("Unexpected error in TaskService.update_task")
             raise DomainError("Service failed to update task") from e
+
+    def _cascade_status_to_subtasks(self, task_id: str, new_status: Status):
+        """Cascade status change to all subtasks when task is marked DONE or CANCELLED."""
+        subtasks = self.task_uow.subtasks.get_subtasks(task_id)
+        
+        for subtask in subtasks:
+            # Skip if subtask already has the same status
+            if subtask.status == new_status:
+                continue
+            
+            # Capture old value for history
+            old_value = asdict(subtask)
+            
+            # Update subtask status
+            subtask.status = new_status
+            updated_subtask = self.task_uow.subtasks.update_subtask(subtask)
+            
+            # Record history for subtask
+            new_value = asdict(updated_subtask)
+            self._record_history(
+                entity_id=subtask.id,
+                entity_type="subtask",
+                change_type=HistoryType.SUBTASK_UPDATED,
+                old_value=str(old_value),
+                new_value=str(new_value)
+            )
+            
+            logger.info("Cascaded status '%s' to subtask %s (parent task: %s)", 
+                       new_status.value, subtask.id, task_id)
 
     def delete_task(self, task_id: str) -> bool:
         try:
